@@ -1,5 +1,6 @@
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import sqlite3
 import hashlib
@@ -12,10 +13,8 @@ app = FastAPI(title="BADAM AI")
 DATABASE = "badam.db"
 
 
-# ساخت پایگاه داده
 def create_database():
     connection = sqlite3.connect(DATABASE)
-
     connection.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +24,6 @@ def create_database():
             salt TEXT NOT NULL
         )
     """)
-
     connection.commit()
     connection.close()
 
@@ -33,20 +31,17 @@ def create_database():
 create_database()
 
 
-# مدل اطلاعات ثبت نام
 class RegisterData(BaseModel):
     username: str
     password: str
     contact: str
 
 
-# مدل اطلاعات ورود
 class LoginData(BaseModel):
     username: str
     password: str
 
 
-# رمزنگاری رمز عبور
 def hash_password(password, salt):
     return hashlib.pbkdf2_hmac(
         "sha256",
@@ -56,7 +51,6 @@ def hash_password(password, salt):
     ).hex()
 
 
-# صفحه اصلی سرور
 @app.get("/")
 def home():
     return {
@@ -66,54 +60,32 @@ def home():
     }
 
 
-# ثبت نام
 @app.post("/register")
 def register(data: RegisterData):
-
     username = data.username.strip()
     password = data.password
     contact = data.contact.strip()
 
     if not username or not contact:
-        raise HTTPException(
-            status_code=400,
-            detail="همه قسمت ها را پر کنید"
-        )
+        raise HTTPException(status_code=400, detail="همه قسمت ها را پر کنید")
 
     if len(password) < 8:
-        raise HTTPException(
-            status_code=400,
-            detail="رمز باید حداقل ۸ کاراکتر باشد"
-        )
+        raise HTTPException(status_code=400, detail="رمز باید حداقل ۸ کاراکتر باشد")
 
     if (
         not password.isascii()
         or not any(c.isalpha() for c in password)
         or any(c.isspace() for c in password)
     ):
-        raise HTTPException(
-            status_code=400,
-            detail="رمز باید حروف انگلیسی داشته باشد"
-        )
+        raise HTTPException(status_code=400, detail="رمز باید حروف انگلیسی داشته باشد")
 
-    # بررسی شماره یا ایمیل
     if "@" in contact:
-        if not re.fullmatch(
-            r"[^@\s]+@[^@\s]+\.[^@\s]+",
-            contact
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="ایمیل معتبر نیست"
-            )
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", contact):
+            raise HTTPException(status_code=400, detail="ایمیل معتبر نیست")
     else:
         digits = re.sub(r"[\s+-]", "", contact)
-
         if not digits.isdigit() or not 10 <= len(digits) <= 15:
-            raise HTTPException(
-                status_code=400,
-                detail="شماره تماس معتبر نیست"
-            )
+            raise HTTPException(status_code=400, detail="شماره تماس معتبر نیست")
 
     salt = secrets.token_hex(16)
     password_hash = hash_password(password, salt)
@@ -129,7 +101,6 @@ def register(data: RegisterData):
             """,
             (username, contact, password_hash, salt)
         )
-
         connection.commit()
 
     except sqlite3.IntegrityError:
@@ -147,10 +118,8 @@ def register(data: RegisterData):
     }
 
 
-# ورود کاربران
 @app.post("/login")
 def login(data: LoginData):
-
     connection = sqlite3.connect(DATABASE)
 
     user = connection.execute(
@@ -171,7 +140,6 @@ def login(data: LoginData):
         )
 
     saved_hash, salt = user
-
     entered_hash = hash_password(data.password, salt)
 
     if not hmac.compare_digest(saved_hash, entered_hash):
@@ -185,3 +153,23 @@ def login(data: LoginData):
         "message": "ورود موفقیت آمیز بود",
         "username": data.username
     }
+
+
+@app.get("/app", response_class=HTMLResponse)
+def mobile_app():
+    return """
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>BADAM AI</title>
+    </head>
+    <body style="background:#071923;color:white;text-align:center;font-family:Tahoma;padding:40px 15px">
+        <h1 style="color:#00E5A8;font-size:55px">🌰 بادام</h1>
+        <h3>به BADAM AI خوش آمدید</h3>
+        <p>نسخه آزمایشی بادام</p>
+        <p style="color:#35C9E8">هوش مصنوعی اختصاصی شما</p>
+    </body>
+    </html>
+    """
